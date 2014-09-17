@@ -56,7 +56,8 @@ class CardReaderApp(PluginApplication):
         format: {
             "command": "card_info",
             "params": {
-                "error": true or false
+                "error": true or false,
+                "error_code": 0,
                 "status": "status string"
                 "content": {
                     "track1": "content of track 1",
@@ -70,6 +71,9 @@ class CardReaderApp(PluginApplication):
     # communication channels
     COMMAND_CHANNEL = 'card_reader.commands'
     RESPONSE_CHANNEL = 'card_reader.responses'
+
+    # error codes
+    (OK, EMPTY_TRACKS, TIMEOUT, FORMAT_ERROR, INVALID_COMMAND, UNKNOWN_ERROR) = range(6)
 
     def __init__(self, appid):
         super(CardReaderApp, self).__init__(appid)
@@ -110,37 +114,47 @@ class CardReaderApp(PluginApplication):
                 timeout = params['timeout']
                 tracks = self.reader.read(timeout)
                 if tracks:
-                    success, status, tracks = True, 'OK', tracks
+                    success, error_code, status, tracks = (
+                        True, CardReaderApp.OK, 'OK', tracks
+                    )
                 else:
-                    success, status = False, 'empty tracks'
+                    success, error_code, status = (
+                        False, CardReaderApp.EMPTY_TRACKS, 'empty tracks'
+                    )
             else:
-                success = False
-                status = 'Invalid command: {0}'.format(command)
+                success, error_code, status = (
+                    False, CardReaderApp.INVALID_COMMAND,
+                    'Invalid command: {0}'.format(command)
+                )
         except Timeout:
-            success = False
-            status = 'Reading process has timed out'
+            success, error_code, status = (
+                False, CardReaderApp.TIMEOUT, 'Reading process has timed out'
+            )
         except KeyError as e:
-            success = False
-            status = 'Message format error, could not find key: {0}'.format(e)
+            success, error_code, status = (
+                False, CardReaderApp.FORMAT_ERROR,
+                'Message format error, could not find key: {0}'.format(e)
+            )
         except Exception as e:
-            success = False
-            status = str(e)
+            success, error_code, status = (
+                False, CardReaderApp.UNKNOWN_ERROR, str(e)
+            )
 
         if success:
             logger.info(status)
         else:
             logger.error(status)
-        self.send_response(success, status, tracks)
+        self.send_response(success, error_code, status, tracks)
 
-    def send_response(self,  success=True, status='', tracks=None):
+    def send_response(self,  success, error_code, status, tracks=None):
         try:
             pub = redis.StrictRedis()
-            msg = self._build_message(success, status, tracks)
+            msg = self._build_message(success, error_code, status, tracks)
             pub.publish(CardReaderApp.RESPONSE_CHANNEL, msg)
         except Exception as e:
             logger.error(e)
 
-    def _build_message(self, success=True, status='', tracks=None):
+    def _build_message(self, success, error_code, status, tracks=None):
         content = {
             'track{0}'.format(k): v for k, v in enumerate(tracks)
         } if tracks else {}
@@ -149,6 +163,7 @@ class CardReaderApp(PluginApplication):
             "command": "card_info",
             "params": {
                 "error": not success,
+                "error_code": error_code,
                 "status": status,
                 "content": content
             }
