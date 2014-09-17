@@ -57,7 +57,6 @@ def read():
 
 if __name__ == '__main__':
     try:
-        print sys.argv
         listener = Listener()
         listener.start()
 
