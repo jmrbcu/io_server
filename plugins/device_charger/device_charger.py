@@ -136,7 +136,7 @@ class DeviceCharger(PluginApplication):
             while True:
                 time.sleep(0.1)
         except (SystemExit, KeyboardInterrupt):
-            command_handler.close()
+            command_handler.stop()
             charger_watcher.stop()
             self.enable_charging(False)
 
