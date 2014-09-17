@@ -1,5 +1,6 @@
 __author__ = 'jmrbcu'
 
+import sys
 import redis
 import json
 import time
@@ -48,7 +49,7 @@ def read():
     command = {
         "command": "read",
         "params": {
-            "timeout": 5
+            "timeout": int(sys.argv[1])
         }
     }
     pub.publish(COMMAND_CHANNEL, json.dumps(command))
@@ -56,6 +57,7 @@ def read():
 
 if __name__ == '__main__':
     try:
+        print sys.argv
         listener = Listener()
         listener.start()
 
