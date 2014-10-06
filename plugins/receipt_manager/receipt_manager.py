@@ -52,6 +52,129 @@ class PrintError(Exception):
 
 
 class ReceiptManager(PluginApplication):
+    """
+    Plugin application from managing receipts. It manage the action of
+    sending receipts to several destinations, for instance, printer,
+    sms and email, but, we just support sending receipts to the attached
+    Thermal pinter. We uses a local redis server as communication channel.
+
+    Redis Communication Channels:
+        receipts.commands: Command channel
+        receipt.responses: Response channel
+
+    Command Message Format:
+        The commands should be in json format and must conform
+        to the following standard:
+
+        format: {
+            "command": "command type",
+            "params": {
+                "param0": value,
+                ...
+                "paramN": values
+            }
+        }
+
+        Commands:
+            send_receipt:
+                Send a receipt to a destination. The destination
+                could be the printer, an email address or a text
+                to a given phone number.
+
+            Parameters:
+                destination: A list where the first element is the destination
+                type and could be one of these: "printer", "sms", "email".
+                The remaining parameters are optional and they depends on the
+                destination type. So far, this is what we support:
+                    "destination": ["printer"]
+                    "destination": ["sms", "10 digits phone number"]
+                    "destination": ["email", "email address"]
+
+                driver_name: The driver name, E.g. "driver_name": "Jon Smith"
+
+                cab_id: The ID of the cab, E.g. "cab_id": "AHX0102"
+
+                items: The items purchased during the trip. It is a dictionary
+                where the keys are the purchased item names and the values are
+                lists where the first element is the price tag and the second
+                one the item type. Items types can be: "item", "barcode" and
+                "qrcode". The barcode or qrcode generated will be based on the
+                item name.
+
+                promotions: The promotions given to the client during the trip.
+                It is a dictionary where the keys are the promotion names and
+                the values are the promotion type and can be: "barcode",
+                "qrcode". The barcode or qrcode generated will be based on the
+                promotion name.
+
+            E.g.: {
+                "command": "send_receipt",
+                "params": {
+                    "destination": ["printer"]
+                    "driver_name": "Jon Smith",
+                    "cab_id": "AH0001234",
+                    "items": {
+                        "Top up to phone: 713-345-6745": [10.0, 'item'],
+                        "T-Shirt on amazon": [3.00, "barcode"],
+                        "Phone charge": [2.00, "item"],
+                        "Trip Fare": [15.00, "item"]
+                    }
+                    "promotions": {
+                        "Space Center Free Ticket": "qrcode"
+                    }
+                }
+            }
+
+    Responses/Events Message Format:
+        The response for a given command or an event type.
+        The responses/events commands are in json format conform
+        to the following standard:
+
+        format: {
+            "command": "command type",
+            "params": {
+                "param0": value,
+                ...
+                "paramN": values
+            }
+        }
+
+
+        Responses/Events:
+            send_receipt:
+                Response to the command "send_receipt", it describe if the
+                command was executed successfully or not.
+
+            Parameters:
+                error: True if an error happened, False otherwise.
+                E.g.: "error": false
+
+                error_code: The error code if an error happened, 0 otherwise.
+                E.g.: "error_code": 0
+
+                status: Status string representing some informative message
+                about the response. Will contain the error string in case
+                of error.
+                E.g.: status: "Printer not connected"
+
+            E.g.: {
+                "command": "send_receipt",
+                "params": {
+                    "error": false,
+                    "error_code": 0,
+                    "status": ""
+                }
+            }
+
+            E.g.: {
+                "command": "send_receipt",
+                "params": {
+                    "error": true,
+                    "error_code": 1,
+                    "status": "printer not connected"
+                }
+            }
+    """
 
     def __init__(self, appid, printer):
         super(ReceiptManager, self).__init__(appid)
