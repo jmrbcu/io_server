@@ -1,4 +1,6 @@
 redis
 hiredis
 foundation
-pycups
+construct
+pysub
+pyserial
