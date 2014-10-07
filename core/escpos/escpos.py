@@ -406,3 +406,15 @@ class Escpos:
             self._raw(CTL_HT)
         elif ctl.upper() == "VT":
             self._raw(CTL_VT)
+
+    def line(self, length=32, initial_break=True):
+        self.set(align='CENTER')
+        if initial_break:
+            self.text('\n')
+        self.text(length * '-')
+        self.text('\n')
+        self.set(align='LEFT')
+
+    def close(self):
+        self.hw('RESET')
+        self.__del__()
