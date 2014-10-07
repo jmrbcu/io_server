@@ -160,8 +160,8 @@ class ReceiptManagerApp(PluginApplication):
         self.interface = interface
         self.in_ep = in_ep
         self.out_ep = out_ep
-        self.header = header
-        self.footer = footer
+        self.header = header.strip()
+        self.footer = footer.strip()
 
     def run(self):
         try:
@@ -239,10 +239,11 @@ class ReceiptManagerApp(PluginApplication):
         )
 
         try:
-            # print logo
-            printer.set(align='center')
-            printer.image(self.header)
-            printer.line(initial_break=False)
+            # print header if we have one
+            if self.header:
+                printer.set(align='center')
+                printer.image(self.header)
+                printer.line(initial_break=False)
 
             # print date and time
             now = datetime.datetime.now()
@@ -325,6 +326,12 @@ class ReceiptManagerApp(PluginApplication):
                         logger.error(msg.format(etype))
                 printer.line()
 
+            # print footer if we have one
+            if self.footer:
+                printer.line(initial_break=True)
+                printer.set(align='center')
+                printer.image(self.footer)
+
             printer.cut()
             return True
         except Exception as e:
@@ -332,7 +339,6 @@ class ReceiptManagerApp(PluginApplication):
             return False
         finally:
             printer.close()
-
 
     def send_response(self,  success, error_code, status):
         try:
@@ -348,25 +354,3 @@ class ReceiptManagerApp(PluginApplication):
             pub.publish(ReceiptManagerApp.RESPONSE_CHANNEL, msg)
         except Exception as e:
             logger.error(e)
-
-    # def create_receipt(self, receipt, name, plate, items):
-    #     now = datetime.datetime.now()
-    #     date = datetime.datetime.strftime(now, '%m/%d/%Y')
-    #     time = datetime.datetime.strftime(now, '%I:%M %p')
-    #
-    #     subtotal = 0.0
-    #     item_names, prices = [], []
-    #     for item, price in items:
-    #         price = float(price)
-    #         subtotal += price
-    #         item_names.append(item)
-    #         prices.append('{0:.2f}'.format(price))
-    #     tax = 0.0825 * subtotal
-    #     total = subtotal + tax
-    #
-    #     template = Template(self.template)
-    #     output = template.render(
-    #         name=name, plate=plate, date=date, time=time,
-    #         items=item_names, prices=prices,
-    #         subtotal=subtotal, tax=tax, total=total
-    #     )
