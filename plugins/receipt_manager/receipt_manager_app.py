@@ -4,30 +4,15 @@ __author__ = 'jmrbcu'
 # python imports
 import logging
 import json
+import time
 import datetime
-
-# gevent imports
-import gevent
-from gevent.monkey import patch_all
-from gevent.subprocess import check_call, check_output
-patch_all(thread=False)
 
 # redis imports
 import redis
 
-# reportlab imports
-from reportlab.lib.units import mm
-from reportlab.pdfgen import canvas
-
-# pycups imports
-import cups
-
-# jinja imports
-from jinja2 import Template
-
-# foundation imports
-from foundation.paths import path
-from foundation.application import application
+# io_server imports
+from core.utils import subscribe, lr_justify
+from core.escpos.printer import Usb
 
 # application runner plugin imports
 from application_runner.plugin_application import PluginApplication
@@ -35,23 +20,7 @@ from application_runner.plugin_application import PluginApplication
 logger = logging.getLogger(__file__)
 
 
-class RedisClientError(Exception):
-    pass
-
-
-class MessageFormatError(Exception):
-    pass
-
-
-class ReceiptCreationError(Exception):
-    pass
-
-
-class PrintError(Exception):
-    pass
-
-
-class ReceiptManager(PluginApplication):
+class ReceiptManagerApp(PluginApplication):
     """
     Plugin application from managing receipts. It manage the action of
     sending receipts to several destinations, for instance, printer,
@@ -110,7 +79,7 @@ class ReceiptManager(PluginApplication):
             E.g.: {
                 "command": "send_receipt",
                 "params": {
-                    "destination": ["printer"]
+                    "destination": ["printer"],
                     "driver_name": "Jon Smith",
                     "cab_id": "AH0001234",
                     "items": {
@@ -118,7 +87,7 @@ class ReceiptManager(PluginApplication):
                         "T-Shirt on amazon": [3.00, "barcode"],
                         "Phone charge": [2.00, "item"],
                         "Trip Fare": [15.00, "item"]
-                    }
+                    },
                     "promotions": {
                         "Space Center Free Ticket": "qrcode"
                     }
@@ -176,203 +145,228 @@ class ReceiptManager(PluginApplication):
             }
     """
 
-    def __init__(self, appid, printer):
-        super(ReceiptManager, self).__init__(appid)
-        self.printer = printer
-        self.host = application.settings.get('redis_server', 'localhost')
+    # communication channels
+    COMMAND_CHANNEL = 'receipt_manager.commands'
+    RESPONSE_CHANNEL = 'receipt_manager.responses'
 
-        # redis connectors
-        self._publisher = redis.Redis(self.host)
-        self._receiver = redis.Redis(self.host)
-        self._subscriber = self._receiver.pubsub(ignore_subscribe_messages=True)
+    # error codes
+    (OK, FORMAT_ERROR, INVALID_COMMAND, PRINTER_ERROR, UNKNOWN_ERROR) = range(5)
 
-        # receipt management
-        self.receipt = 'receipt.pdf'
-        self.spool = path(application.home_dir).join('spool')
-        if not self.spool.exists():
-            self.spool.makedirs()
-
-        self.template = None
-        self.template_path = path(__file__).dirname().join('res').join('default_template.html')
-        with open(self.template_path) as f:
-            self.template = f.read()
+    def __init__(self, appid, id_vendor, id_product, interface=0,
+                 in_ep=0x82, out_ep=0x01, header=None, footer=None):
+        super(ReceiptManagerApp, self).__init__(appid)
+        self.id_vendor = id_vendor
+        self.id_product = id_product
+        self.interface = interface
+        self.in_ep = in_ep
+        self.out_ep = out_ep
+        self.header = header
+        self.footer = footer
 
     def run(self):
-        while True:
-            try:
-                logger.info('Starting to wait for receipt orders')
-                if not self._subscriber.subscribed:
-                    self._subscriber.subscribe('receipts.orders')
-
-                for msg in self._subscriber.listen():
-                    self.process_order(msg)
-            except redis.ConnectionError:
-                error = 'Error while connecting to redis, reconnecting...'
-                logger.error(error)
-                gevent.sleep(1)
-            except (KeyboardInterrupt, SystemExit):
-                break
-            except:
-                error = 'Unhandled exception within loop'
-                logger.error(error, exc_info=True)
-
-    def process_order(self, msg):
         try:
-            logger.info('New message received: {0}'.format(msg))
+            # message handler
+            handler = subscribe(
+                ReceiptManagerApp.COMMAND_CHANNEL, self.on_message
+            )
 
-            data = msg.get('data')
-            if data is None:
-                raise MessageFormatError('Empty message, discarding')
-            data = json.loads(data)
+            # main loop
+            while True:
+                time.sleep(0.1)
+        except (SystemExit, KeyboardInterrupt):
+            handler.stop()
 
-            # validate the message
-            self._validate_message(data)
+    def on_message(self, msg):
+        logger.info('New command received: {0}'.format(msg))
 
-            # get all required params
-            destination = data.get('destination', 'printer')
-            driver_name = data.get('driver_name', 'Default Driver')
-            cab_number = data.get('cab_number', 'XXXXXXXXXXXX')
-            items = data.get('items')
+        try:
+            command = msg['command']
+            params = msg['params']
 
-            # create pdf receipt
-            receipt = self.create_receipt(self.receipt, driver_name, cab_number, items)
+            if command == 'send_receipt':
+                destination = params['destination']
+                driver_name = params['driver_name']
+                cab_id = params['cab_id']
+                items = params['items']
+                promotions = params['promotions']
 
-            # print the receipt
-            self.print_receipt(receipt)
+                if destination[0] == 'printer':
+                    success = self.print_receipt(
+                        driver_name, cab_id, items, promotions
+                    )
+                    if success:
+                        success, error_code, status = (
+                            True, ReceiptManagerApp.OK, 'OK'
+                        )
+                    else:
+                        msg = 'Failed to print receipt'
+                        success, error_code, status = (
+                            False, ReceiptManagerApp.PRINTER_ERROR, msg
+                        )
+                else:
+                    success, error_code, status = (
+                        False, ReceiptManagerApp.INVALID_COMMAND,
+                        ('Invalid destination: {0}, for now, we only support'
+                         'printer as destination').format(destination)
+                    )
+            else:
+                success, error_code, status = (
+                    False, ReceiptManagerApp.INVALID_COMMAND,
+                    'Invalid command: {0}'.format(command)
+                )
+        except (KeyError, IndexError) as e:
+            success, error_code, status = (
+                False, ReceiptManagerApp.FORMAT_ERROR,
+                'Message format error, could not find key: {0}'.format(e)
+            )
+        except Exception as e:
+            success, error_code, status = (
+                False, ReceiptManagerApp.UNKNOWN_ERROR, str(e)
+            )
 
-            # send the response if everything was OK
-            self.send_response(True, 'OK')
-        except (MessageFormatError, ReceiptCreationError, PrintError) as e:
-            logger.error(e)
-            self.send_response(False, e.message)
-        finally:
-            self._cleanup()
+        if success:
+            logger.info(status)
+        else:
+            logger.error(status)
 
-    def create_receipt(self, receipt, name, plate, items):
-        now = datetime.datetime.now()
-        date = datetime.datetime.strftime(now, '%m/%d/%Y')
-        time = datetime.datetime.strftime(now, '%I:%M %p')
+        self.send_response(success, error_code, status)
 
-        subtotal = 0.0
-        item_names, prices = [], []
-        for item, price in items:
-            price = float(price)
-            subtotal += price
-            item_names.append(item)
-            prices.append('{0:.2f}'.format(price))
-        tax = 0.0825 * subtotal
-        total = subtotal + tax
-
-        template = Template(self.template)
-        output = template.render(
-            name=name, plate=plate, date=date, time=time,
-            items=item_names, prices=prices,
-            subtotal=subtotal, tax=tax, total=total
+    def print_receipt(self, driver_name, cab_id, items, promotions):
+        printer = Usb(
+            int(self.id_vendor, 16), int(self.id_product, 16),
+            int(self.interface, 16), int(self.in_ep, 16),
+            int(self.out_ep, 16)
         )
 
-        html = self.spool.join('output.html')
-        pdf = self.spool.join('output.pdf')
-        path(__file__).dirname().join('res').join('header.jpeg').copy(self.spool)
-        path(__file__).dirname().join('res').join('footer.jpeg').copy(self.spool)
-        with open(html, 'w') as f:
-            f.write(output)
-
-        check_call(['wkhtmltopdf', '--page-width', '48', '--page-height', '140', '-T', '0', '-B', '0', '-L', '0', '-R', '0', html, pdf])
-        return pdf
-
-
-    def create_receipt_old(self, receipt, driver_name, cab_number, items):
-        width, height = 48 * mm, 140 * mm
-        margin = 10
-
-        pdf = canvas.Canvas(receipt, pagesize=(width, height))
-        pdf.setLineWidth(.3)
-        pdf.setFont('Helvetica', 7)
-
-        # start writing the receipt
-        title = 'YELLOW CAB'
-        pdf.drawCentredString(width/2, height - 14, title)
-        pdf.line(margin, height - 16, width - margin, height - 16)
-
-        text = pdf.beginText(margin, height - 30)
-        text.textLine('Driver Name: ' + driver_name)
-        text.textLine('Cab Number: ' + cab_number)
-        text.textLine('Date: ' + datetime.datetime.now().ctime())
-        text.textLine('')
-
-        total = 0.0
-        for item, price in items:
-            text.textLine(item + ': ' + '$' + str(price))
-            total += price
-        pdf.drawText(text)
-
-        x0, y0 = text.getStartOfLine()
-        pdf.line(x0, y0 -1, width - margin, y0)
-        pdf.drawRightString(width - margin, y0 - 10, 'Total: ' + '$' + '{0:0.2f}'.format(total))
-        pdf.drawString(margin, y0 - 24, 'Thank You')
-        pdf.drawString(margin, y0 - 32, 'www.houstonyellowcab.com')
-
-        # save the pdf file
-        pdf.save()
-
-    def print_receipt(self, receipt):
-        connection = cups.Connection()
-        if self.printer == 'default':
-            printer = connection.getDefault()
-        connection.cancelAllJobs(printer)
-        connection.disablePrinter(printer)
-        connection.enablePrinter(printer)
-        connection.acceptJobs(printer)
-
-        pid = connection.printFile(printer, receipt, 'receipt', {})
-        if pid == 0:
-            raise PrintError('An error has occurred while printing')
-
-        timeout = 30
-        while connection.getJobs().get(pid, None) is not None and timeout:
-            logger.info(connection.getJobs())
-            gevent.sleep(1)
-            timeout -= 1
-
-        if timeout == 0:
-            connection.cancelAllJobs(printer)
-            raise PrintError('Printer job has timed out')
-
-    def send_response(self, result, reason):
-        logger.info('Sending response to subscribers: {0}'.format(result))
-        msg = {'result': result, 'reason': reason}
-        self._publisher.publish('receipts.results', json.dumps(msg))
-
-    def _cleanup(self):
         try:
-            for filename in self.spool.listdir():
-                logger.info('Cleaning file: {0}'.format(filename))
-                filename.remove()
-        except:
-            pass
+            # print logo
+            printer.set(align='center')
+            printer.image(self.header)
+            printer.line(initial_break=False)
 
-    def _validate_message(self, data):
-        destination = data.get('destination')
-        if destination is None:
-            error = 'Missing destination field in message, discarding'
-            raise MessageFormatError(error)
+            # print date and time
+            now = datetime.datetime.now()
+            date = datetime.datetime.strftime(now, '%m/%d/%Y')
+            time = datetime.datetime.strftime(now, '%I:%M %p')
 
-        driver_name = data.get('driver_name')
-        if driver_name is None:
-            error = 'Missing driver name field in message, discarding'
-            raise MessageFormatError(error)
+            printer.set(align='left')
+            printer.text('DATE: {0} {1}\n'.format(date, time))
 
-        cab_number = data.get('cab_number')
-        if cab_number is None:
-            error = 'Missing cab number field in message, discarding'
-            raise MessageFormatError(error)
+            # print driver name and cab id
+            printer.set(align='left')
+            printer.text('DRIVER NAME: {0}\n'.format(driver_name))
+            printer.text('CAB ID: {0}\n'.format(cab_id))
+            printer.line()
 
-        items = data.get('items')
-        if items is None:
-            error = 'Missing items field in message, discarding'
-            raise MessageFormatError(error)
+            # print items
+            extras = {}
+            subtotal = 0.0
+            for name, (price, itype) in items.iteritems():
+                price = float(price)
+                left = '{0}:'.format(name)
+                right = '{0:.2f}'.format(price)
+                to_print = lr_justify(left, right, 32)
+                if itype in ('barcode', 'qrcode'):
+                    printer.set(align='left', type='u2')
+                    printer.text(to_print)
+                    extras[name] = itype
+                else:
+                    printer.set(align='left', type='normal')
+                    printer.text(to_print)
+                printer.text('\n')
+                subtotal += price
+            tax = 0.0825 * subtotal
 
-        if not isinstance(items, list) or isinstance(items, tuple):
-            error = 'Bad format for items field, discarding message: {0}'
-            raise MessageFormatError(error.format(items))
+            # print subtotals, taxes and totals
+            printer.text('\n')
+            printer.set(align='left', type='b')
+            printer.text('SUBTOTAL:\t{0:.2f}\n'.format(subtotal))
+            printer.text('TAXES:\t{0:.2f}\n'.format(tax))
 
+            total = subtotal + tax
+            printer.line(initial_break=False)
+            printer.set(align='left', type='b')
+            printer.text('TOTAL:\t{0:.2f}\n'.format(total))
+
+            # print promotions and extras
+            if promotions:
+                printer.text('\n')
+                printer.set(align='left', type='bu2')
+                printer.text('PROMOTIONS:\n\n')
+
+                printer.set(align='left', type='bu')
+                for name, ptype in promotions.iteritems():
+                    if ptype == 'barcode':
+                        printer.text('{0}\n'.format(name))
+                        printer.barcode(name,'UPC-A', 128, 2, 'OFF', 'B')
+                    elif ptype == 'qrcode':
+                        printer.text('{0}\n'.format(name))
+                        printer.qr(name, True, qr_escpos_size=4)
+                    else:
+                        msg = 'Invalid promotion type: {0}'
+                        logger.error(msg.format(ptype))
+                printer.line()
+
+            if extras:
+                printer.text('\n')
+                printer.set(align='left', type='bu2')
+                printer.text('EXTRAS\n\n')
+
+                printer.set(align='left', type='bu')
+                for name, etype in extras.iteritems():
+                    if etype == 'barcode':
+                        printer.text('{0}\n'.format(name))
+                        printer.barcode(name,'UPC-A', 128, 2, 'OFF', 'B')
+                    elif etype == 'qrcode':
+                        printer.text('{0}\n'.format(name))
+                        printer.qr(name, True, qr_escpos_size=4)
+                    else:
+                        msg = 'Invalid extra type: {0}'
+                        logger.error(msg.format(etype))
+                printer.line()
+
+            printer.cut()
+            return True
+        except Exception as e:
+            logger.error(e)
+            return False
+        finally:
+            printer.close()
+
+
+    def send_response(self,  success, error_code, status):
+        try:
+            msg = json.dumps({
+                "command": "send_receipt",
+                "params": {
+                    "error": not success,
+                    "error_code": error_code,
+                    "status": status,
+                }
+            })
+            pub = redis.StrictRedis()
+            pub.publish(ReceiptManagerApp.RESPONSE_CHANNEL, msg)
+        except Exception as e:
+            logger.error(e)
+
+    # def create_receipt(self, receipt, name, plate, items):
+    #     now = datetime.datetime.now()
+    #     date = datetime.datetime.strftime(now, '%m/%d/%Y')
+    #     time = datetime.datetime.strftime(now, '%I:%M %p')
+    #
+    #     subtotal = 0.0
+    #     item_names, prices = [], []
+    #     for item, price in items:
+    #         price = float(price)
+    #         subtotal += price
+    #         item_names.append(item)
+    #         prices.append('{0:.2f}'.format(price))
+    #     tax = 0.0825 * subtotal
+    #     total = subtotal + tax
+    #
+    #     template = Template(self.template)
+    #     output = template.render(
+    #         name=name, plate=plate, date=date, time=time,
+    #         items=item_names, prices=prices,
+    #         subtotal=subtotal, tax=tax, total=total
+    #     )

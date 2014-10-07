@@ -18,19 +18,38 @@ class ReceiptManagerPlugin(Plugin):
 
     @contributes_to('application_runner.applications')
     def _create(self):
-        from .receipt_manager import ReceiptManager
+        from .receipt_manager_app import ReceiptManagerApp
 
         settings = application.settings
         settings = settings['ReceiptManager']
-        printer = settings['printer']
 
-        return ReceiptManager(self.id, printer),
+        printer = settings['printer']
+        id_vendor = printer['id_vendor']
+        id_product = printer['id_product']
+        interface = printer['interface']
+        in_ep = printer['in_ep']
+        out_ep = printer['out_ep']
+        header = printer['header']
+        footer = printer['footer']
+
+        return ReceiptManagerApp(self.id, id_vendor, id_product, interface,
+                                 in_ep, out_ep, header, footer),
 
     def configure(self):
-        receipts_path = path(application.home_dir).join('receipts')
+        default_header = path(__file__).dirname().join('res').join('logo.jpg')
+        default_footer = default_header
+
         settings = application.settings
         settings = settings.setdefault('ReceiptManager', {})
-        settings.setdefault('printer', 'default')
+        printer = settings.setdefault('printer', {})
+        printer.setdefault('id_vendor', '')
+        printer.setdefault('id_product', '')
+        printer.setdefault('interface', 0)
+        printer.setdefault('in_ep', 0x82)
+        printer.setdefault('out_ep', 0x01)
+        printer.setdefault('header', default_header)
+        printer.setdefault('footer', default_footer)
+
 
 
 
