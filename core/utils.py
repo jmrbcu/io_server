@@ -11,6 +11,17 @@ import json
 logger = logging.getLogger(__file__)
 
 
+def lr_justify(left, right, width):
+    """
+    Justify an string at the left and the right using
+    maximum "width" characters
+    """
+    if len(left) + len(right) > width - 1:
+        left = left[:width - len(right) - 1]
+
+    return '{}{}{}'.format(left, ' '*(width-len(left+right)), right)
+
+
 def subscribe(channel, handler, host='localhost', port=6379,
               db=0, password=None):
 
