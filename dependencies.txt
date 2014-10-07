@@ -2,5 +2,5 @@ redis
 hiredis
 foundation
 construct
-pysub
+pyusb
 pyserial
