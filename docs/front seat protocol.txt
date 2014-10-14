@@ -1,0 +1,123 @@
+Shift Management:
+--------------------------------------------------------------------------------
+
+Redis Communication Channels:
+    shifts: Command channel
+
+Command Message Format:
+    The commands should be in json format and must conform
+    to the following standard:
+
+    format: {
+        "command": "command type",
+        "params": {
+            "param0": value,
+            ...
+            "paramN": values
+        }
+    }
+
+    Commands:
+        shift_changed:
+            Tell to the interested parties that the shift is initiated or ended
+            by the taxi driver. This is done by swiping the taxi driver id card
+            in the magnetic reader and typing a PIN number in the pin pad.
+
+        Parameters:
+            pin: An string representing the pin number entered by the taxi
+            driver in the pin pad.
+
+            state: A bool flag that tells if the shift is started (True)
+            or ended (False).
+
+            tracks: The tracks we just read from the taxi driver id card.
+            This is a dictionary where the keys are the track names (track1,
+            track2 and track3) and the values are the content of the tracks.
+            Take into account that if a track is empty, it will not be
+            included in the content field.
+
+        E.g.: {
+            "command": "shift",
+            "params": {
+                "pin": "01234",
+                "state": true,
+                "tracks": {
+                    "track1": "content of track 1",
+                    "track2": "content of track 2",
+                    "track3": "content of track 3"
+                }
+            }
+        }
+
+
+Taximeter
+--------------------------------------------------------------------------------
+
+Redis Communication Channels:
+    taximeter: Command channel
+
+Command Message Format:
+    The commands should be in json format and must conform
+    to the following standard:
+
+    format: {
+        "command": "command type",
+        "params": {
+            "param0": value,
+            ...
+            "paramN": values
+        }
+    }
+
+    Commands:
+        init_trip:
+            Tell to the interested parties that a trip is initiated.
+
+        Parameters:
+            None
+
+        E.g.: {
+            "command": "init_trip",
+            "params": None
+        }
+
+        fare_updated:
+            Tell to the interested parties when the fare is updated. It will
+            contain the new fare amount WITHOUT THE TAXES.
+
+        Parameters:
+            fare: A float representing the new fare without taxes.
+
+            tax: Float with the actual value for the tax.
+
+            tax_percent: An float with the percent factor over the sales used
+            for taxes.
+
+        E.g.: {
+            "command": "fare_updated",
+            "params": {
+                "fare": 11.10,
+                "tax": 0.92,
+                "tax_percent": 0.0825
+            }
+        }
+
+        end_trip:
+            Tell to the interested parties when the trip is finished.
+
+        Parameters:
+            fare: A float representing the last fare without taxes.
+
+            tax: Float with the actual value for the tax.
+
+            tax_percent: An float with the percent factor over the sales used
+            for taxes.
+
+        E.g.: {
+            "command": "end_trip",
+            "params": {
+                "fare": 11.10,
+                "tax": 0.92,
+                "tax_percent": 0.0825
+            }
+        }
