@@ -4,3 +4,4 @@ foundation
 construct
 pyusb
 pyserial
+qrcode
