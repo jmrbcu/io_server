@@ -95,6 +95,10 @@ class DeviceCharger(PluginApplication):
     @staticmethod
     def detect_charger_port():
         ports = [port[0] for port in list_ports.grep('2341:8037')]
+        if ports:
+            return ports[0]
+
+        ports = [port[0] for port in list_ports.grep('0403:6001')]
         return ports[0] if ports else None
 
     def enable_charging(self, enable):
