@@ -16,6 +16,15 @@ git clone https://github.com/jmrbcu/io_server.git /usr/local/io_server
 sudo pip install -r /usr/local/io_server/requirements.txt
 sudo pip install git+https://github.com/jmrbcu/foundation.git
 
+# BIXOLON printer driver for cups
+sudo mkdir /tmp/printer
+sudo cp /usr/local/io_server/deps/printer/SPP-100II_Linux_v1.0.0.tar.bz2 /tmp
+sudo tar -xvpf /tmp/SPP-100II_Linux_v1.0.0.tar.bz2 -C /tmp/printer/
+sudo sh /tmp/printer/SPP-100II_Linux_v1.0.0/setup_v1.0.0.sh
+rm -rf /tmp/printer
+sudo service cups stop
+sudo service cups start
+
 # extras
 git clone https://github.com/jmrbcu/dotfiles.git .dotfiles
 for x in `ls -ha ~/.dotfiles`; do ln -sf ~/.dotfiles/$x ~/$x; done
