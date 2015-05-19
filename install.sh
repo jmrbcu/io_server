@@ -14,6 +14,7 @@ sudo pip install -r /usr/local/rebrow/requirements.txt
 # io server
 git clone https://github.com/jmrbcu/io_server.git /usr/local/io_server
 sudo pip install -r /usr/local/io_server/requirements.txt
+sudo pip install git+https://github.com/jmrbcu/foundation.git
 
 # configure supervisor
 sudo cp /usr/local/io_server/conf/supervisord.conf /etc/supervisor/supervisord.conf
