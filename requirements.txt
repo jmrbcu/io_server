@@ -1,6 +1,1 @@
-redis
-hiredis
-construct
-pyusb
-pyserial
 qrcode
