@@ -13,11 +13,11 @@ sudo update-rc.d redis-server disable
 
 # redis client
 sudo git clone https://github.com/marians/rebrow.git /usr/local/rebrow
-sudo pip install --pre -r /usr/local/rebrow/requirements.txt
+sudo pip install -r /usr/local/rebrow/requirements.txt
 
 # io server
 git clone https://github.com/jmrbcu/io_server.git /usr/local/io_server
-sudo pip install -r /usr/local/io_server/requirements.txt
+sudo pip install --pre -r /usr/local/io_server/requirements.txt
 sudo pip install git+https://github.com/jmrbcu/foundation.git
 su -c "python /usr/local/io_server/io_server.py -g"
 
