@@ -1,3 +1,6 @@
+git clone https://github.com/io_server.git /usr/local/io_server
+cd /usr/local/io_server
+
 sudo apt-get -y update
 sudo apt-get -y ssh ruby mc htop redis-server redis-tools git python-pip supervisor
 sudp cp /etc/redis/redis.conf /etc/redis/redis.conf.save
