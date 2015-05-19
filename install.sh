@@ -19,6 +19,7 @@ sudo pip install --pre -r /usr/local/rebrow/requirements.txt
 git clone https://github.com/jmrbcu/io_server.git /usr/local/io_server
 sudo pip install -r /usr/local/io_server/requirements.txt
 sudo pip install git+https://github.com/jmrbcu/foundation.git
+su -c "python /usr/local/io_server/io_server.py -g"
 
 # BIXOLON printer driver for cups
 sudo mkdir /tmp/printer
