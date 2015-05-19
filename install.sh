@@ -4,7 +4,7 @@ sudo passwd root
 # install dependencies
 sudo apt-get -y update
 sudo apt-get -y upgrade
-sudo apt-get -y install ssh ruby mc htop redis-server redis-tools git python-pip supervisor python-serial python-construct python-redis python-hiredis libusb
+sudo apt-get -y install ssh ruby mc htop redis-server redis-tools git python-pip supervisor python-serial python-construct python-redis python-hiredis libusb ipython
 sudo cp /etc/redis/redis.conf /etc/redis/redis.conf.save
 sudo sed -i 's/bind 127.0.0.1/bind 0.0.0.0/g' /etc/redis/redis.conf
 sudo sed -i 's/daemonize yes/daemonize no/g' /etc/redis/redis.conf
