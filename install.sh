@@ -16,6 +16,10 @@ git clone https://github.com/jmrbcu/io_server.git /usr/local/io_server
 sudo pip install -r /usr/local/io_server/requirements.txt
 sudo pip install git+https://github.com/jmrbcu/foundation.git
 
+# extras
+git clone https://github.com/jmrbcu/dotfiles.git .dotfiles
+for x in `ls -ha ~/.dotfiles`; do ln -sf ~/.dotfiles/$x ~/$x; done
+
 # configure supervisor
 sudo cp /usr/local/io_server/conf/supervisord.conf /etc/supervisor/supervisord.conf
 sudo service supervisor stop
