@@ -1,0 +1,7 @@
+redis
+hiredis
+foundation
+construct
+pyusb
+pyserial
+qrcode
