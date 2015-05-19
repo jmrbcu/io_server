@@ -1,3 +1,7 @@
+# change root password
+sudo passwd root
+
+# install dependencies
 sudo apt-get -y update
 sudo apt-get -y upgrade
 sudo apt-get -y install ssh ruby mc htop redis-server redis-tools git python-pip supervisor python-serial python-construct python-redis python-hiredis libusb
